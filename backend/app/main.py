@@ -2,18 +2,12 @@ from fastapi import FastAPI, Request, Response
 from starlette_graphene3 import GraphQLApp, make_playground_handler
 from app.graphql.schema import schema
 from app.database.connection import engine
-from app.database.context import GraphQLContext
 from app.database.dependencies import get_db
 from app.models import usermodel
 
 usermodel.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
-
-class GraphQLRouter(GraphQLApp):
-    def get_context(self, request: Request):
-        return GraphQLContext(request)
 
 
 # Database session middleware
@@ -33,17 +27,14 @@ async def db_session_middleware(request: Request, call_next):
     return response
 
 
-@app.get("/graphql")
-def graphql_app(request: Request):
-    context = {"db": getattr(request.state, "db", None)}
-    print("GraphQL Context:", context)  # Debugging
-    return GraphQLApp(
-        schema=schema,
-        context=context,
-    )
+# Custom GraphQL middleware to handle context
+class CustomGraphQLApp(GraphQLApp):
+    async def handle_graphql(self, request: Request):
+        context = {"db": getattr(request.state, "db", None)}
+        return await super().handle_graphql(request, context=context)
 
 
-# app.add_route("/graphql", GraphQLRouter(schema=schema))
+app.mount("/graphql", CustomGraphQLApp(schema=schema))
 
 app.mount("/", GraphQLApp(schema, on_get=make_playground_handler()))  # Playground IDE
 
